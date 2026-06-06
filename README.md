@@ -289,8 +289,7 @@ The notebooks detect the environment automatically (Colab vs. local) and mount G
 | `torch` + `torchvision` | ResNet18 feature extraction |
 | `scikit-learn` | GradientBoostingClassifier, DecisionTreeClassifier, metrics, CV |
 | `scikit-image` | HOG descriptor |
-| `opencv-python` | Image resizing and color conversion |
-| `Pillow` | Image loading |
+| `Pillow` | Image loading and resizing |
 | `numpy` | Feature arrays and bootstrap sampling |
 | `matplotlib` + `seaborn` | Report figures |
 | `joblib` | Checkpoint serialization |
@@ -309,6 +308,6 @@ The notebooks detect the environment automatically (Colab vs. local) and mount G
 
 5. Zhou, B., Lapedriza, A., Khosla, A., Oliva, A., & Torralba, A. (2017). **Places: A 10 million image database for scene recognition.** *IEEE TPAMI, 40*(6), 1452–1464.
 
-6. Pedregosa, F., et al. (2011). **Scikit-learn: Machine Learning in Python.** *JMLR, 12*, 2825–2830.
+6. Pedregosa, F., et al. (2011). **Scikit-learn: Machine Learning in Python.** *JMLR, 12*, 2825–2830. *(library)*
 
-7. Paszke, A., et al. (2019). **PyTorch: An Imperative Style, High-Performance Deep Learning Library.** *NeurIPS.*
+7. Paszke, A., et al. (2019). **PyTorch: An Imperative Style, High-Performance Deep Learning Library.** *NeurIPS.* *(library)*
