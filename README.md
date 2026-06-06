@@ -1,7 +1,8 @@
 # Museum Image Classifier
 
 Binary image classifier distinguishing **museum interiors** from **museum exteriors**, implemented under two separate learning paradigms as part of an Applied AI course project.
-
+Group Antigravity.
+link:https://github.com/Stanzione/Applied-AI/
 ---
 
 ## Table of Contents
