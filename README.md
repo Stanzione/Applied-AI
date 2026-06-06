@@ -11,7 +11,7 @@ Binary image classifier distinguishing **museum interiors** from **museum exteri
 - [Dataset](#dataset)
 - [Preprocessing Pipelines](#preprocessing-pipelines)
   - [Pipeline A — ResNet18 (512-d)](#pipeline-a--resnet18-512-d)
-  - [Pipeline B — Handcrafted Descriptors](#pipeline-b--handcrafted-descriptors-1-991-d-supervised-only-hog-baseline)
+  - [Pipeline B — HOG](#pipeline-b--hog-1-764-d-supervised-only-baseline)
   - [Pipeline Comparison — ResNet18 vs HOG](#pipeline-comparison--resnet18-vs-hog)
 - [Paradigm 1 — Supervised: Gradient Boosting](#paradigm-1--supervised-gradient-boosting)
 - [Paradigm 2 — Semi-supervised: Manual Self-Training](#paradigm-2--semi-supervised-manual-self-training)
@@ -86,36 +86,38 @@ Input images are resized to 224 × 224 and normalized with ImageNet mean/std. Fe
 
 > He, K., Zhang, X., Ren, S., & Sun, J. (2016). *Deep Residual Learning for Image Recognition.* CVPR. [[arXiv]](https://arxiv.org/abs/1512.03385)
 
-### Pipeline B — Handcrafted Descriptors (~1 991-d) *(supervised only, HOG baseline)*
+### Pipeline B — HOG (~1 764-d) *(supervised only, baseline)*
 
-Three descriptor families are computed on each image resized to 128 × 128 and concatenated into a single vector:
+HOG features are computed on each image resized to 224 × 224 grayscale. The image is divided into a grid of 8×8 cells (each cell spanning 28×28 pixels), with each cell producing a 9-bin gradient orientation histogram. Adjacent cells are grouped into 2×2 overlapping blocks and L2-Hys normalized — yielding a descriptor of approximately 1 764 dimensions that captures the local edge and gradient structure of the scene.
 
-| Descriptor | Dimensions | Captures |
-|---|---|---|
-| HOG (8×8 cells, 9 bins) | ~1 764-d | Edge and gradient structure |
-| Uniform LBP (radius=1, 8 points) | 26-d | Micro-texture |
-| RGB + HSV histograms + color moments | 201-d | Color distribution |
+```python
+HOG_PARAMS = dict(
+    orientations=9,
+    pixels_per_cell=(28, 28),   # 224 / 28 = 8 cells per side
+    cells_per_block=(2, 2),
+    block_norm='L2-Hys',
+    transform_sqrt=True,
+)
+```
 
-> **HOG:** Dalal, N., & Triggs, B. (2005). *Histograms of Oriented Gradients for Human Detection.* CVPR.
->
-> **LBP:** Ojala, T., Pietikäinen, M., & Mäenpää, T. (2002). *Multiresolution Gray-Scale and Rotation Invariant Texture Classification with Local Binary Patterns.* IEEE TPAMI.
+> Dalal, N., & Triggs, B. (2005). *Histograms of Oriented Gradients for Human Detection.* CVPR.
 
 ### Pipeline Comparison — ResNet18 vs HOG
 
 The same 5 Gradient Boosting configurations are trained and evaluated on **both** feature sets, producing a direct side-by-side benchmark under identical modeling conditions.
 
-| Aspect | Pipeline A — ResNet18 | Pipeline B — HOG + LBP + Color |
+| Aspect | Pipeline A — ResNet18 | Pipeline B — HOG |
 |---|---|---|
-| Feature dimensions | 512-d | ~1 991-d |
-| Feature type | Deep semantic embeddings | Handcrafted spatial/texture/color descriptors |
+| Feature dimensions | 512-d | ~1 764-d |
+| Feature type | Deep semantic embeddings | Handcrafted edge/gradient descriptors |
 | Requires GPU | Recommended (feature extraction) | No |
 | Extraction time | ~2 min (10k images, CPU) | ~5 min (10k images, CPU) |
-| Interpretability | Low — learned representations | High — each dimension has a geometric meaning |
-| Expected accuracy | Higher — ImageNet pretraining transfers well to scene classification | Lower — handcrafted descriptors miss high-level semantics |
+| Interpretability | Low — learned representations | High — each bin corresponds to a gradient orientation |
+| Expected accuracy | Higher — ImageNet pretraining transfers well to scene classification | Lower — edge descriptors miss high-level semantics |
 
 The report (`report_supervised.png`) presents both pipelines in a unified dashboard so the accuracy gap, ROC curves, and per-config F1 can be compared directly. This illustrates a key trade-off in applied ML: **feature engineering depth vs. representational power**.
 
-ResNet18 features benefit from transfer learning — the backbone was pretrained on 1.2M ImageNet images and has implicitly learned to distinguish indoor from outdoor scenes through intermediate visual concepts (furniture, architecture, sky, foliage). HOG and LBP, by contrast, are purely local descriptors that do not encode object-level semantics, which limits their ceiling on scene-level classification.
+ResNet18 features benefit from transfer learning — the backbone was pretrained on 1.2M ImageNet images and has implicitly learned to distinguish indoor from outdoor scenes through intermediate visual concepts (furniture, architecture, sky, foliage). HOG, by contrast, is a purely local descriptor that captures only gradient orientations and does not encode object-level semantics, which limits its ceiling on scene-level classification.
 
 ---
 
@@ -146,7 +148,7 @@ Each config is evaluated with **5-fold Stratified Cross-Validation** on the trai
 | Function | Purpose |
 |---|---|
 | `extract_resnet_features()` | Runs frozen ResNet18 over a dataset; loads from `.npz` checkpoint if available |
-| `extract_hog_features()` | Computes HOG + LBP + color descriptors; caches to `.npz` |
+| `extract_hog_features()` | Computes HOG descriptors; caches to `.npz` |
 | `run_pipeline()` | Scales features → fits all 5 GB configs with 5-fold CV → saves checkpoint |
 | `f1_confidence_interval()` | Bootstrap resampling (n=2 000) to compute a 95% CI on macro-F1 |
 | `build_report()` | Generates the multi-panel dark-theme figure (bars, ROC, heatmap, CM, table) |
@@ -286,7 +288,7 @@ The notebooks detect the environment automatically (Colab vs. local) and mount G
 |---|---|
 | `torch` + `torchvision` | ResNet18 feature extraction |
 | `scikit-learn` | GradientBoostingClassifier, DecisionTreeClassifier, metrics, CV |
-| `scikit-image` | HOG descriptor, LBP |
+| `scikit-image` | HOG descriptor |
 | `opencv-python` | Image resizing and color conversion |
 | `Pillow` | Image loading |
 | `numpy` | Feature arrays and bootstrap sampling |
@@ -305,10 +307,8 @@ The notebooks detect the environment automatically (Colab vs. local) and mount G
 
 4. Dalal, N., & Triggs, B. (2005). **Histograms of Oriented Gradients for Human Detection.** *CVPR*, 886–893.
 
-5. Ojala, T., Pietikäinen, M., & Mäenpää, T. (2002). **Multiresolution Gray-Scale and Rotation Invariant Texture Classification with Local Binary Patterns.** *IEEE TPAMI, 24*(7), 971–987.
+5. Zhou, B., Lapedriza, A., Khosla, A., Oliva, A., & Torralba, A. (2017). **Places: A 10 million image database for scene recognition.** *IEEE TPAMI, 40*(6), 1452–1464.
 
-6. Zhou, B., Lapedriza, A., Khosla, A., Oliva, A., & Torralba, A. (2017). **Places: A 10 million image database for scene recognition.** *IEEE TPAMI, 40*(6), 1452–1464.
+6. Pedregosa, F., et al. (2011). **Scikit-learn: Machine Learning in Python.** *JMLR, 12*, 2825–2830.
 
-7. Pedregosa, F., et al. (2011). **Scikit-learn: Machine Learning in Python.** *JMLR, 12*, 2825–2830.
-
-8. Paszke, A., et al. (2019). **PyTorch: An Imperative Style, High-Performance Deep Learning Library.** *NeurIPS.*
+7. Paszke, A., et al. (2019). **PyTorch: An Imperative Style, High-Performance Deep Learning Library.** *NeurIPS.*
