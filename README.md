@@ -66,7 +66,7 @@ test/                 (unlabeled — final prediction target)
 
 Images span `.jpg`, `.jpeg`, `.png`, `.bmp`, and `.webp` formats. `MuseumDataset` (a `torch.utils.data.Dataset` subclass) loads them with deterministic ordering via `samples.sort()` to guarantee reproducible (feature, label) alignment across Colab sessions.
 
-> Zhou, B., Lapedriza, A., Khosla, A., Oliva, A., & Torralba, A. (2017). *Places: A 10 million image database for scene recognition.* IEEE TPAMI.
+> Zhou, B., Lapedriza, A., Khosla, A., Oliva, A., & Torralba, A. (2018). *Places: A 10 million image database for scene recognition.* IEEE TPAMI.
 
 ---
 
@@ -306,7 +306,7 @@ The notebooks detect the environment automatically (Colab vs. local) and mount G
 
 4. Dalal, N., & Triggs, B. (2005). **Histograms of Oriented Gradients for Human Detection.** *CVPR*, 886–893.
 
-5. Zhou, B., Lapedriza, A., Khosla, A., Oliva, A., & Torralba, A. (2017). **Places: A 10 million image database for scene recognition.** *IEEE TPAMI, 40*(6), 1452–1464.
+5. Zhou, B., Lapedriza, A., Khosla, A., Oliva, A., & Torralba, A. (2018). **Places: A 10 million image database for scene recognition.** *IEEE TPAMI, 40*(6), 1452–1464.
 
 6. Pedregosa, F., et al. (2011). **Scikit-learn: Machine Learning in Python.** *JMLR, 12*, 2825–2830. *(library)*
 
