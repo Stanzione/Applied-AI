@@ -18,6 +18,7 @@ Link: https://github.com/Stanzione/Applied-AI/
   - [Pipeline Comparison — ResNet18 vs HOG](#pipeline-comparison--resnet18-vs-hog)
 - [Paradigm 1 — Supervised: Gradient Boosting](#paradigm-1--supervised-gradient-boosting)
 - [Paradigm 2 — Semi-supervised: Manual Self-Training](#paradigm-2--semi-supervised-manual-self-training)
+- [Results Summary — Feature-Based Paradigms](#results-summary--feature-based-paradigms)
 - [End-to-End CNN — Custom Network vs ResNet18 Backbone](#end-to-end-cnn--custom-network-vs-resnet18-backbone)
   - [Notebook Structure](#notebook-structure)
   - [Custom CNN Architecture](#custom-cnn-architecture)
@@ -26,7 +27,6 @@ Link: https://github.com/Stanzione/Applied-AI/
   - [Saving, Loading & Application Mode](#saving-loading--application-mode)
   - [CNN Results](#cnn-results)
 - [Checkpoints](#checkpoints)
-- [Results Summary](#results-summary)
 - [How to Run](#how-to-run)
 - [Dependencies](#dependencies)
 - [References](#references)
@@ -267,6 +267,48 @@ A positive ΔF1 indicates the self-training loop genuinely improved over what la
 
 ---
 
+## Results Summary — Feature-Based Paradigms
+
+### Supervised (ResNet18 + Gradient Boosting)
+
+All metrics on the held-out validation set (n = 200, balanced 100/100). 95% bootstrap confidence interval on macro-F1 ≈ ±0.022.
+
+| Config | Val Acc | Val F1 (macro) | Val ROC-AUC | CV F1 ± std | Time |
+|---|---|---|---|---|---|
+| DT_depth1_gini             | 0.9100 | 0.9098 | 0.9100 | 0.8777 ± 0.0039 | 8 s |
+| DT_depth2_gini             | 0.9150 | 0.9147 | 0.9563 | 0.8858 ± 0.0053 | 10 s |
+| GB_n10_lr01_d2_sub07       | 0.9750 | 0.9750 | 0.9948 | 0.9608 ± 0.0034 | 472 s |
+| GB_n50_lr005_d3_sub07      | 0.9750 | 0.9750 | 0.9924 | 0.9523 ± 0.0035 | 493 s |
+| GB_n100_lr01_d2_sub05      | 0.9600 | 0.9600 | 0.9948 | 0.9626 ± 0.0035 | 455 s |
+| **GB_n50_lr05_d3_leaf5**   | **0.9750** | **0.9750** | **0.9961** | 0.9623 ± 0.0040 | 733 s |
+| GB_n75_lr01_d4_sub07_leaf3 | 0.9700 | 0.9700 | 0.9964 | 0.9668 ± 0.0016 | 942 s |
+
+**Best supervised model:** `GB_n50_lr05_d3_leaf5` — highest val F1 (0.9750) tied with two others, top-tier ROC-AUC (0.9961), and 28 % faster than the next-best regularized config. Gain over the strongest DT baseline: **ΔF1 ≈ +0.060**, clearly above the bootstrap CI of ±0.022 → statistically significant.
+
+The 3 configs that hit val F1 = 0.9750 (`GB_n10_lr01_d2_sub07`, `GB_n50_lr005_d3_sub07`, `GB_n50_lr05_d3_leaf5`) sit at the val-set noise ceiling; the choice between them is dominated by ROC-AUC and CV F1 stability.
+
+### HOG vs ResNet18 — Same Decision Tree
+
+To isolate the contribution of the feature representation, the same `DecisionTreeClassifier(max_depth=2, gini)` is trained on both feature spaces. The performance gap quantifies how much the deep representation contributes beyond classical edge descriptors.
+
+*(Run the supervised notebook to populate the exact numbers — figure saved to `outputs_supervised/hog_vs_resnet.png`.)*
+
+### Semi-supervised (ResNet18 + ManualSelfTrainingDT)
+
+| Config | Val F1 | ΔF1 | Stop Reason | Iterations |
+|---|---|---|---|---|
+| **ST_thr060_d6_lab30**   | **0.9449** | −0.005 | no_confident_samples | 5 |
+| ST_kbest500_d4_lab20     | 0.9300 | +0.010 | no_confident_samples | 17 |
+| ST_entropy_d4_lab30      | 0.9247 | +0.000 | unlabeled_exhausted  | 3 |
+| ST_thr075_d2_lab20       | 0.9200 | +0.000 | no_confident_samples | 3 |
+| ST_thr095_d6_lab10       | 0.9050 | +0.010 | no_confident_samples | 5 |
+
+**Best semi-supervised model:** `ST_thr060_d6_lab30` — highest val F1 (0.9449), highest pseudo-label accuracy (0.924). The marginal negative ΔF1 reflects that the labeled-only DT baseline with 30 % of labels already nears the ceiling of what a depth-6 DT can extract from ResNet features; the self-training loop merely confirms this rather than substantially improving it.
+
+**Best convergence demonstration:** `ST_kbest500_d4_lab20` — 16 iterations of +500 samples each, with `avg_score` decaying monotonically from 0.956 to 0.711 until `max_score < threshold` fires `no_confident_samples`. This config provides the strongest empirical demonstration of the rubric's "we can see the loop" requirement.
+
+---
+
 ## End-to-End CNN — Custom Network vs ResNet18 Backbone
 
 **Notebook:** `museum_cnn_colab.ipynb` · runs end-to-end on **Google Colab** (dataset mounted from Google Drive, per-epoch checkpointing to Drive).
@@ -409,57 +451,29 @@ And the semi-supervised notebook reuses `sup_resnet_*.npz` plus its own `semi_mo
 
 ---
 
-## Results Summary
-
-### Supervised (ResNet18 + Gradient Boosting)
-
-All metrics on the held-out validation set (n = 200, balanced 100/100). 95% bootstrap confidence interval on macro-F1 ≈ ±0.022.
-
-| Config | Val Acc | Val F1 (macro) | Val ROC-AUC | CV F1 ± std | Time |
-|---|---|---|---|---|---|
-| DT_depth1_gini             | 0.9100 | 0.9098 | 0.9100 | 0.8777 ± 0.0039 | 8 s |
-| DT_depth2_gini             | 0.9150 | 0.9147 | 0.9563 | 0.8858 ± 0.0053 | 10 s |
-| GB_n10_lr01_d2_sub07       | 0.9750 | 0.9750 | 0.9948 | 0.9608 ± 0.0034 | 472 s |
-| GB_n50_lr005_d3_sub07      | 0.9750 | 0.9750 | 0.9924 | 0.9523 ± 0.0035 | 493 s |
-| GB_n100_lr01_d2_sub05      | 0.9600 | 0.9600 | 0.9948 | 0.9626 ± 0.0035 | 455 s |
-| **GB_n50_lr05_d3_leaf5**   | **0.9750** | **0.9750** | **0.9961** | 0.9623 ± 0.0040 | 733 s |
-| GB_n75_lr01_d4_sub07_leaf3 | 0.9700 | 0.9700 | 0.9964 | 0.9668 ± 0.0016 | 942 s |
-
-**Best supervised model:** `GB_n50_lr05_d3_leaf5` — highest val F1 (0.9750) tied with two others, top-tier ROC-AUC (0.9961), and 28 % faster than the next-best regularized config. Gain over the strongest DT baseline: **ΔF1 ≈ +0.060**, clearly above the bootstrap CI of ±0.022 → statistically significant.
-
-The 3 configs that hit val F1 = 0.9750 (`GB_n10_lr01_d2_sub07`, `GB_n50_lr005_d3_sub07`, `GB_n50_lr05_d3_leaf5`) sit at the val-set noise ceiling; the choice between them is dominated by ROC-AUC and CV F1 stability.
-
-### HOG vs ResNet18 — Same Decision Tree
-
-To isolate the contribution of the feature representation, the same `DecisionTreeClassifier(max_depth=2, gini)` is trained on both feature spaces. The performance gap quantifies how much the deep representation contributes beyond classical edge descriptors.
-
-*(Run the supervised notebook to populate the exact numbers — figure saved to `outputs_supervised/hog_vs_resnet.png`.)*
-
-### Semi-supervised (ResNet18 + ManualSelfTrainingDT)
-
-| Config | Val F1 | ΔF1 | Stop Reason | Iterations |
-|---|---|---|---|---|
-| **ST_thr060_d6_lab30**   | **0.9449** | −0.005 | no_confident_samples | 5 |
-| ST_kbest500_d4_lab20     | 0.9300 | +0.010 | no_confident_samples | 17 |
-| ST_entropy_d4_lab30      | 0.9247 | +0.000 | unlabeled_exhausted  | 3 |
-| ST_thr075_d2_lab20       | 0.9200 | +0.000 | no_confident_samples | 3 |
-| ST_thr095_d6_lab10       | 0.9050 | +0.010 | no_confident_samples | 5 |
-
-**Best semi-supervised model:** `ST_thr060_d6_lab30` — highest val F1 (0.9449), highest pseudo-label accuracy (0.924). The marginal negative ΔF1 reflects that the labeled-only DT baseline with 30 % of labels already nears the ceiling of what a depth-6 DT can extract from ResNet features; the self-training loop merely confirms this rather than substantially improving it.
-
-**Best convergence demonstration:** `ST_kbest500_d4_lab20` — 16 iterations of +500 samples each, with `avg_score` decaying monotonically from 0.956 to 0.711 until `max_score < threshold` fires `no_confident_samples`. This config provides the strongest empirical demonstration of the rubric's "we can see the loop" requirement.
-
----
-
 ## How to Run
+
+### Feature-based notebooks
 
 1. Upload your dataset to `MyDrive/appliedAI/` on Google Drive following the structure above
 2. Extract the checkpoint zips into `MyDrive/appliedAI/checkpoints/`
-3. Open either notebook in **Google Colab** and run all cells top to bottom
+3. Open either notebook (`museum_supervised_dt_boosting.ipynb` / `museum_semisupervised_dt.ipynb`) in **Google Colab** and run all cells top to bottom
 
 The notebooks detect the environment automatically (Colab vs. local) and mount Google Drive if needed.
 
 For a live demo, set `IMAGE_PATH` in the "Bonus — Live Single-Image Prediction" cell of either notebook to point to any image file on disk; the cell extracts ResNet18 features, runs the best model, and displays the predicted class with per-class probability bars.
+
+### End-to-end CNN notebook (`museum_cnn_colab.ipynb`)
+
+1. Upload your dataset to `MyDrive/appliedAI/` following the same structure above
+2. Open `museum_cnn_colab.ipynb` in **Google Colab** and run all cells top to bottom — it auto-mounts Google Drive
+
+This notebook trains directly on pixels at 128 × 128 with ImageNet normalization, so it needs **no** precomputed feature zips. Two toggles control the experiments:
+
+- `FREEZE_BACKBONE` (Section VII) — `False` fine-tunes ResNet18 end-to-end (default), `True` freezes the backbone and trains only the head.
+- `RUN_SENSITIVITY` (Section VIII-b) — `True` retrains ResNet18 at its native 224 px to report ΔF1 vs the 128 px result.
+
+Saved models go to `MyDrive/appliedAI/models` (`museum_cnn_best.pt`, `museum_resnet18.pt`); per-epoch checkpoints are written to `MyDrive/appliedAI/checkpoints`, so a disconnected session resumes from the last completed epoch on re-run.
 
 ---
 
