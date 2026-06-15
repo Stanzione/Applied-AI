@@ -1,6 +1,6 @@
 # Museum Image Classifier
 
-Binary image classifier distinguishing **museum interiors** from **museum exteriors**, implemented under two separate learning paradigms as part of an Applied AI course project.
+Binary image classifier distinguishing **museum interiors** from **museum exteriors**, tackled through two complementary methodologies — classical **feature extraction + shallow learners** (two paradigms) and **end-to-end convolutional neural networks** — as part of an Applied AI course project.
 
 Group Antigravity.
 Link: https://github.com/Stanzione/Applied-AI/
@@ -18,6 +18,13 @@ Link: https://github.com/Stanzione/Applied-AI/
   - [Pipeline Comparison — ResNet18 vs HOG](#pipeline-comparison--resnet18-vs-hog)
 - [Paradigm 1 — Supervised: Gradient Boosting](#paradigm-1--supervised-gradient-boosting)
 - [Paradigm 2 — Semi-supervised: Manual Self-Training](#paradigm-2--semi-supervised-manual-self-training)
+- [End-to-End CNN — Custom Network vs ResNet18 Backbone](#end-to-end-cnn--custom-network-vs-resnet18-backbone)
+  - [Notebook Structure](#notebook-structure)
+  - [Custom CNN Architecture](#custom-cnn-architecture)
+  - [Controlled Comparison — Custom CNN vs ResNet18 Extractor](#controlled-comparison--custom-cnn-vs-resnet18-extractor)
+  - [Sensitivity Check — Native 224 px](#sensitivity-check--native-224-px)
+  - [Saving, Loading & Application Mode](#saving-loading--application-mode)
+  - [CNN Results](#cnn-results)
 - [Checkpoints](#checkpoints)
 - [Results Summary](#results-summary)
 - [How to Run](#how-to-run)
@@ -28,7 +35,9 @@ Link: https://github.com/Stanzione/Applied-AI/
 
 ## Overview
 
-The project explores two fundamentally different approaches to the same binary classification task:
+The project attacks the same binary classification task from two methodological angles.
+
+**1. Feature extraction + shallow learners** — a frozen ResNet18 (or HOG) front-end turns each image into a fixed feature vector, which a classical model then classifies. Two paradigms live here:
 
 | Paradigm | Notebook | Algorithm |
 |---|---|---|
@@ -37,14 +46,23 @@ The project explores two fundamentally different approaches to the same binary c
 
 Both paradigms share the same feature extraction front-end (ResNet18 embeddings) and are evaluated on the same held-out validation set.
 
+**2. End-to-end convolutional neural networks** — the network learns the representation *and* the decision boundary jointly, trained directly on pixels in PyTorch:
+
+| Approach | Notebook | Model |
+|---|---|---|
+| Deep learning | `museum_cnn_colab.ipynb` | Custom CNN (from scratch) vs ResNet18 backbone — controlled comparison |
+
+The CNN notebook runs end-to-end on Google Colab with the dataset mounted from Drive and per-epoch checkpointing, and is described in its own [section below](#end-to-end-cnn--custom-network-vs-resnet18-backbone).
+
 ---
 
 ## Repository Structure
 
 ```
 AppliedAI/
-├── museum_supervised_dt_boosting.ipynb     ← supervised notebook
-├── museum_semisupervised_dt.ipynb          ← semi-supervised notebook
+├── museum_supervised_dt_boosting.ipynb     ← supervised notebook (feature-based)
+├── museum_semisupervised_dt.ipynb          ← semi-supervised notebook (feature-based)
+├── museum_cnn_colab.ipynb                  ← end-to-end CNN notebook (Colab)
 ├── drive-download-...-910Z.zip             ← ResNet18 features + trained models
 └── drive-download-...-329Z.zip             ← HOG features + DT baselines
 ```
@@ -246,6 +264,121 @@ Each config is compared against a **labeled-only baseline** DT (same depth and c
 ```
 
 A positive ΔF1 indicates the self-training loop genuinely improved over what labeled data alone could achieve.
+
+---
+
+## End-to-End CNN — Custom Network vs ResNet18 Backbone
+
+**Notebook:** `museum_cnn_colab.ipynb` · runs end-to-end on **Google Colab** (dataset mounted from Google Drive, per-epoch checkpointing to Drive).
+
+Unlike the feature-extraction paradigms above, this approach learns the representation and the classifier jointly, straight from pixels. The headline experiment is a **controlled comparison**: a CNN trained from scratch versus an ImageNet-pretrained ResNet18, with the two pipelines differing in *only one thing* — the feature extractor.
+
+### Notebook Structure
+
+| Section | Content |
+|---|---|
+| I | Exploratory data analysis |
+| II | Preprocessing, augmentation, automated **stratified** train/val split |
+| III | Custom CNN architecture |
+| IV | Training / evaluation utilities (resumable checkpointing, early stopping) |
+| V | Baseline custom-CNN training |
+| VI | Hyperparameter search — *within-family* comparison |
+| VII | ResNet18 controlled comparison |
+| VIII | Final evaluation on the held-out test set |
+| VIII-b | *(optional)* sensitivity check — ResNet18 at native 224 px |
+| IX | Load a saved model & run batch inference on the test folder |
+| X | Application mode — single-image / live demo |
+
+### Dataset Layout (Google Drive)
+
+The notebook expects the dataset under `MyDrive/appliedAI/` (same images as the [Dataset](#dataset) section above):
+
+```
+MyDrive/appliedAI/
+├── training/            ← labeled; auto-split 80/20 into train/val (stratified) → 8 000 / 2 000
+│   ├── museum-indoor/
+│   └── museum-outdoor/
+├── museum_validation/   ← held-out TEST set (200 images, balanced 100/100)
+└── test/                ← unlabeled images (application mode → predictions CSV)
+```
+
+Trained models are written to `MyDrive/appliedAI/models/` and resumable per-epoch checkpoints to `MyDrive/appliedAI/checkpoints/`, so a Colab disconnect never loses progress — re-running the same cell resumes from the last completed epoch.
+
+### Custom CNN Architecture
+
+`MuseumCNN` is built in two explicit parts:
+
+- **Feature extractor** — `n_blocks` convolutional blocks, each `Conv3×3 → BatchNorm → ReLU → (MaxPool)`, channels doubling per block (`base_channels=32`). He (Kaiming) initialization for ReLU.
+- **Classifier head** — the shared `make_classifier` factory (see below).
+
+`n_blocks`, `n_pools`, `base_channels` and `dropout` are configurable, which drives the within-family hyperparameter search in Section VI (depth, pooling, learning rate, optimizer, batch size). The best config is **auto-selected** by validation accuracy, retrained on the full split, and saved.
+
+### Controlled Comparison — Custom CNN vs ResNet18 Extractor
+
+Section VII is engineered so the two pipelines differ in **only the feature extractor** — same head, same input, same training regime:
+
+```python
+def make_classifier(in_ch, n_classes=2, dropout=0.5):
+    # AdaptiveAvgPool(4×4) → Flatten → Dropout → Linear(in_ch*16 → 128)
+    #                      → ReLU → Dropout → Linear(128 → n_classes)
+```
+
+| | Custom CNN | ResNet18 pipeline |
+|---|---|---|
+| Feature extractor | conv blocks trained from scratch | ResNet18 (ImageNet), `conv1…layer4`, avgpool/fc removed → 512-ch map |
+| `in_ch` into the head | 128 | 512 |
+| Classifier head | shared `make_classifier` | **same** shared `make_classifier` |
+| Input | 128×128, ImageNet normalization | **same** 128×128 loaders & normalization |
+
+`AdaptiveAvgPool2d((4,4))` makes the head independent of spatial size, so the identical head plugs onto either extractor. ImageNet normalization is applied to **both** pipelines — neutral for the from-scratch CNN (it uses BatchNorm) and the native format ResNet was pretrained on — guaranteeing identical inputs. Because the head, input and optimization are shared, any performance gap isolates the contribution of the **feature extractor** itself (learned-from-scratch vs ImageNet transfer).
+
+A `FREEZE_BACKBONE` flag controls the ResNet regime:
+
+| `FREEZE_BACKBONE` | Behavior |
+|---|---|
+| `False` *(default)* | Fine-tune ResNet end-to-end — mirrors the custom CNN, which is also trained end-to-end |
+| `True` | Freeze the backbone, train only the head |
+
+### Sensitivity Check — Native 224 px
+
+Section VIII-b is optional (`RUN_SENSITIVITY = True`): it retrains the ResNet pipeline at its native **224×224** resolution — *only the input resolution changes* — and reports **ΔF1 (224 vs 128)**. A near-zero ΔF1 confirms that running the comparison at 128 px did not penalize the pretrained backbone, i.e. the gap measured in Section VII really comes from the extractor, not the input format.
+
+### Saving, Loading & Application Mode
+
+Per the assignment's deployment requirements:
+
+- **Save** — each trained model is serialized with its architecture kwargs, weights, normalization stats and class names: `museum_cnn_best.pt` (custom CNN) and `museum_resnet18.pt` (ResNet pipeline).
+- **Load + batch test** (Section IX) — `load_model()` reconstructs the network from the checkpoint; `predict_folder()` runs it over the unlabeled `test/` folder and writes a per-image **predictions CSV** with softmax probabilities.
+- **Application mode** (Section X) — `predict_image()` classifies a single image on disk and displays the predicted class with per-class probabilities.
+
+All models are built in **standard PyTorch** (`torchvision` counts as PyTorch); scikit-learn is used **only** for the stratified split and evaluation metrics.
+
+### CNN Results
+
+**Within-family hyperparameter search (Section VI)** — 7 configs, 5 short epochs each, ranked by best validation accuracy on the 2 000-image val split:
+
+| Experiment | Variation | Best Val Acc | Params |
+|---|---|---|---|
+| **blocks_4**     | 4 conv blocks (winner) | **0.9250** | 914 050 |
+| pool_removed     | one pooling layer removed | 0.9235 | 356 226 |
+| baseline_3blocks | 3 conv blocks (reference) | 0.9195 | 356 226 |
+| batch_32         | batch size 32 | 0.9150 | 356 226 |
+| sgd_momentum     | SGD + momentum, lr 1e-2 | 0.9125 | 356 226 |
+| lr_1e-4          | Adam, lr 1e-4 | 0.9015 | 356 226 |
+| blocks_2         | 2 conv blocks | 0.8995 | 151 042 |
+
+The 4-block CNN is auto-selected, retrained on the full split, and saved as `museum_cnn_best.pt`.
+
+**Final held-out test (Section VII–VIII)** — 200 images, balanced 100/100:
+
+| Model | Accuracy | F1 (macro) |
+|---|---|---|
+| Custom CNN (best, 4 blocks) | 0.9400 | 0.9399 |
+| **ResNet18 (backbone + shared head, 128 px)** | **0.9750** | **0.9750** |
+
+With the head, input and training regime held identical, the ImageNet-pretrained extractor beats the from-scratch CNN by **ΔF1 ≈ +0.035** — a clean measure of what transfer learning contributes, since the extractor is the only thing that changed.
+
+**Sensitivity check (Section VIII-b)** — retraining ResNet18 at native 224 px yields the *same* F1 (0.9750), so **ΔF1 (224 − 128) = +0.0000**: the 128 px choice did not bias the comparison against the pretrained backbone.
 
 ---
 
